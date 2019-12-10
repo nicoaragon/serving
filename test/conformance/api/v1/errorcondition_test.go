@@ -20,16 +20,19 @@ package v1
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
 	ptest "knative.dev/pkg/test"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	serviceresourcenames "knative.dev/serving/pkg/reconciler/service/resources/names"
 	"knative.dev/serving/test"
+	tl "knative.dev/serving/test/tl"
 	v1test "knative.dev/serving/test/v1"
 
 	rtesting "knative.dev/serving/pkg/testing/v1"
@@ -42,12 +45,13 @@ const (
 // TestContainerErrorMsg is to validate the error condition defined at
 // https://github.com/knative/serving/blob/master/docs/spec/errors.md
 // for the container image missing scenario.
-func TestContainerErrorMsg(t *testing.T) {
-	t.Parallel()
+func TestContainerErrorMsg(legacy *testing.T) {
+	legacy.Parallel()
 	if strings.HasSuffix(strings.Split(ptest.Flags.DockerRepo, "/")[0], ".local") {
-		t.Skip("Skipping for local docker repo")
+		legacy.Skip("Skipping for local docker repo")
 	}
-	clients := test.Setup(t)
+	clients := tl.Setup(legacy)
+	t := NewTLogger(legacy)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
@@ -59,26 +63,25 @@ func TestContainerErrorMsg(t *testing.T) {
 
 	// Specify an invalid image path
 	// A valid DockerRepo is still needed, otherwise will get UNAUTHORIZED instead of container missing error
-	t.Logf("Creating a new Service %s", names.Service)
-	svc, err := createService(t, clients, names, 2)
-	if err != nil {
-		t.Fatalf("Failed to create Service: %v", err)
-	}
+	t.V(2).Log("Creating a new Service", "service", names.Service)
+	svc, err := createService(legacy, clients, names, 2)
+	t.FatalIfErr(err, "Failed to create Service")
 
 	names.Config = serviceresourcenames.Configuration(svc)
 	names.Route = serviceresourcenames.Route(svc)
 
 	manifestUnknown := string(transport.ManifestUnknownErrorCode)
-	t.Log("When the imagepath is invalid, the Configuration should have error status.")
+	t.V(2).Log("When the imagepath is invalid, the Configuration should have error status.")
 
 	// Wait for ServiceState becomes NotReady. It also waits for the creation of Configuration.
-	if err := v1test.WaitForServiceState(clients.ServingClient, names.Service, v1test.IsServiceNotReady, "ServiceIsNotReady"); err != nil {
-		t.Fatalf("The Service %s was unexpected state: %v", names.Service, err)
-	}
+	err = v1test.WaitForServiceState(clients.ServingClient, names.Service, v1test.IsServiceNotReady, "ServiceIsNotReady")
+	t.FatalIfErr(err, "The Service was unexpected state",
+		"service", names.Service)
 
 	// Checking for "Container image not present in repository" scenario defined in error condition spec
 	err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 		cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
+		ValidateCondition(t, cond)
 		if cond != nil && !cond.IsUnknown() {
 			if strings.Contains(cond.Message, manifestUnknown) && cond.IsFalse() {
 				return true, nil
@@ -90,18 +93,16 @@ func TestContainerErrorMsg(t *testing.T) {
 		return false, nil
 	}, "ContainerImageNotPresent")
 
-	if err != nil {
-		t.Fatalf("Failed to validate configuration state: %s", err)
-	}
+	t.FatalIfErr(err, "Failed to validate configuration state")
 
 	revisionName, err := getRevisionFromConfiguration(clients, names.Config)
-	if err != nil {
-		t.Fatalf("Failed to get revision from configuration %s: %v", names.Config, err)
-	}
+	t.FatalIfErr(err, "Failed to get revision from configuration",
+		"configuration", names.Config)
 
-	t.Log("When the imagepath is invalid, the revision should have error status.")
+	t.V(2).Log("When the imagepath is invalid, the revision should have error status.")
 	err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 		cond := r.Status.GetCondition(v1.RevisionConditionReady)
+		ValidateCondition(t, cond)
 		if cond != nil {
 			if cond.Reason == containerMissing && strings.Contains(cond.Message, manifestUnknown) {
 				return true, nil
@@ -112,15 +113,12 @@ func TestContainerErrorMsg(t *testing.T) {
 		return false, nil
 	}, "ImagePathInvalid")
 
-	if err != nil {
-		t.Fatalf("Failed to validate revision state: %s", err)
-	}
+	t.FatalIfErr(err, "Failed to validate revision state")
 
-	t.Log("Checking to ensure Route is in desired state")
+	t.V(2).Log("Checking to ensure Route is in desired state")
 	err = v1test.CheckRouteState(clients.ServingClient, names.Route, v1test.IsRouteNotReady)
-	if err != nil {
-		t.Fatalf("the Route %s was not desired state: %v", names.Route, err)
-	}
+	t.FatalIfErr(err, "the Route was not desired state",
+		"route", names.Route)
 }
 
 // TestContainerExitingMsg is to validate the error condition defined at
@@ -178,6 +176,7 @@ func TestContainerExitingMsg(t *testing.T) {
 
 			err := v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 				cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
+				ValidateCondition(t, cond)
 				if cond != nil && !cond.IsUnknown() {
 					if strings.Contains(cond.Message, errorLog) && cond.IsFalse() {
 						return true, nil
@@ -201,6 +200,7 @@ func TestContainerExitingMsg(t *testing.T) {
 			t.Log("When the containers keep crashing, the revision should have error status.")
 			err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 				cond := r.Status.GetCondition(v1.RevisionConditionReady)
+				ValidateCondition(t, cond)
 				if cond != nil {
 					if cond.Reason == exitCodeReason && strings.Contains(cond.Message, errorLog) {
 						return true, nil
@@ -228,4 +228,28 @@ func getRevisionFromConfiguration(clients *test.Clients, configName string) (str
 		return config.Status.LatestCreatedRevisionName, nil
 	}
 	return "", fmt.Errorf("No valid revision name found in configuration %s", configName)
+}
+
+var camelCaseRegex = regexp.MustCompile(`^[[:upper:]].*`)
+var camelCaseSingleWordRegex = regexp.MustCompile(`^[[:upper:]][^[:whitespace:]]+$`)
+
+func ValidateCondition(t *TLogger, c *apis.Condition) {
+	if c == nil {
+		return
+	}
+	t = t.WithValues("condition", c)
+	if c.Type == "" {
+		t.Error("A Condition.Type must not be an empty string")
+	} else if !camelCaseRegex.MatchString(c.Type) {
+		t.Error("A Condition.Type must be CamelCase, so must start with an upper-case letter")
+	}
+	if c.Status != apis.ConditionTrue && c.Status != apis.ConditionFalse && c.Status != apis.ConditionUnknown {
+		t.Error("A Condition.Status must be True, False, or Unknown")
+	}
+	if c.Reason != "" && !camelCaseRegex.MatchString(c.Reason) {
+		t.Error("A Condition.Reason, if given, must be a single-word CamelCase")
+	}
+	if c.Severity != apis.ConditionSeverityError && c.Severity != apis.ConditionSeverityWarning && c.Severity != apis.ConditionSeverityInfo {
+		t.Error("A Condition.Status must be '', Warning, or Info")
+	}
 }
