@@ -19,20 +19,20 @@ limitations under the License.
 package v1
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 	ptest "knative.dev/pkg/test"
+	"knative.dev/pkg/test/logging"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	serviceresourcenames "knative.dev/serving/pkg/reconciler/service/resources/names"
 	"knative.dev/serving/test"
-	tl "knative.dev/serving/test/tl"
 	v1test "knative.dev/serving/test/v1"
 
 	rtesting "knative.dev/serving/pkg/testing/v1"
@@ -46,12 +46,15 @@ const (
 // https://github.com/knative/serving/blob/master/docs/spec/errors.md
 // for the container image missing scenario.
 func TestContainerErrorMsg(legacy *testing.T) {
-	legacy.Parallel()
+	t := logging.NewTLogger(legacy)
+	defer t.CleanUp()
 	if strings.HasSuffix(strings.Split(ptest.Flags.DockerRepo, "/")[0], ".local") {
-		legacy.Skip("Skipping for local docker repo")
+		t.V(0).Info("Skipping for local docker repo")
+		t.SkipNow()
 	}
-	clients := tl.Setup(legacy)
-	t := NewTLogger(legacy)
+	t.Parallel()
+	clients := test.Setup(t)
+	e2e_errors := make([]error, 0)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
@@ -63,7 +66,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 
 	// Specify an invalid image path
 	// A valid DockerRepo is still needed, otherwise will get UNAUTHORIZED instead of container missing error
-	t.V(2).Log("Creating a new Service", "service", names.Service)
+	t.V(2).Info("Creating a new Service", "service", names.Service)
 	svc, err := createService(legacy, clients, names, 2)
 	t.FatalIfErr(err, "Failed to create Service")
 
@@ -71,60 +74,81 @@ func TestContainerErrorMsg(legacy *testing.T) {
 	names.Route = serviceresourcenames.Route(svc)
 
 	manifestUnknown := string(transport.ManifestUnknownErrorCode)
-	t.V(2).Log("When the imagepath is invalid, the Configuration should have error status.")
 
-	// Wait for ServiceState becomes NotReady. It also waits for the creation of Configuration.
-	err = v1test.WaitForServiceState(clients.ServingClient, names.Service, v1test.IsServiceNotReady, "ServiceIsNotReady")
-	t.FatalIfErr(err, "The Service was unexpected state",
-		"service", names.Service)
+	t.Run("API", func(t *logging.TLogger) {
+		t.V(1).Info("When the imagepath is invalid, the Configuration should have error status.")
+		t.V(8).Info("Wait for ServiceState becomes NotReady. It also waits for the creation of Configuration.")
+		err = v1test.WaitForServiceState(clients.ServingClient, names.Service, v1test.IsServiceNotReady, "ServiceIsNotReady")
+		t.FatalIfErr(err, "The Service was unexpected state",
+			"service", names.Service)
 
-	// Checking for "Container image not present in repository" scenario defined in error condition spec
-	err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
-		cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
-		ValidateCondition(t, cond)
-		if cond != nil && !cond.IsUnknown() {
-			if strings.Contains(cond.Message, manifestUnknown) && cond.IsFalse() {
-				return true, nil
+		t.V(8).Info("Checking for 'Container image not present in repository' scenario defined in error condition spec.")
+		err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
+			cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
+			errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
+			ValidateCondition(t.WithValues(errCtx...), cond)
+			if cond != nil && !cond.IsUnknown() {
+				if cond.IsFalse() {
+					if !strings.Contains(cond.Message, manifestUnknown) {
+						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
+							"wantMessage", manifestUnknown, errCtx...)))
+					}
+					if cond.Message != "" {
+						return true, nil
+					}
+				}
+				return true, logging.Error("The configuration was not marked with expected error condition",
+					"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False", errCtx...)
 			}
-			t.Logf("Reason: %s ; Message: %s ; Status %s", cond.Reason, cond.Message, cond.Status)
-			return true, fmt.Errorf("The configuration %s was not marked with expected error condition (Reason=%q, Message=%q, Status=%q), but with (Reason=%q, Message=%q, Status=%q)",
-				names.Config, containerMissing, manifestUnknown, "False", cond.Reason, cond.Message, cond.Status)
-		}
-		return false, nil
-	}, "ContainerImageNotPresent")
+			return false, nil
+		}, "ContainerImageNotPresent")
 
-	t.FatalIfErr(err, "Failed to validate configuration state")
+		t.FatalIfErr(err, "Failed to validate configuration state")
 
-	revisionName, err := getRevisionFromConfiguration(clients, names.Config)
-	t.FatalIfErr(err, "Failed to get revision from configuration",
-		"configuration", names.Config)
+		revisionName, err := getRevisionFromConfiguration(clients, names.Config)
+		t.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
 
-	t.V(2).Log("When the imagepath is invalid, the revision should have error status.")
-	err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
-		cond := r.Status.GetCondition(v1.RevisionConditionReady)
-		ValidateCondition(t, cond)
-		if cond != nil {
-			if cond.Reason == containerMissing && strings.Contains(cond.Message, manifestUnknown) {
-				return true, nil
+		t.V(1).Info("When the imagepath is invalid, the revision should have error status.")
+		err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
+			cond := r.Status.GetCondition(v1.RevisionConditionReady)
+			errCtx := [4]interface{}{"revision", revisionName, "condition", cond}
+			ValidateCondition(t.WithValues(errCtx...), cond)
+			if cond != nil {
+				if cond.Reason == containerMissing {
+					if !strings.Contains(cond.Message, manifestUnknown) {
+						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with invalid imagepath",
+							"wantMessage", manifestUnknown, errCtx...)))
+					}
+					if cond.Message != "" {
+						return true, nil
+					}
+				}
+				return true, logging.Error("The revision was not marked with expected error condition",
+					"wantReason", containerMissing, "wantMessage", "!\"\"", errCtx...)
 			}
-			return true, fmt.Errorf("The revision %s was not marked with expected error condition (Reason=%q, Message=%q), but with (Reason=%q, Message=%q)",
-				revisionName, containerMissing, manifestUnknown, cond.Reason, cond.Message)
+			return false, nil
+		}, "ImagePathInvalid")
+
+		t.FatalIfErr(err, "Failed to validate revision state")
+
+		t.V(1).Info("Checking to ensure Route is in desired state")
+		err = v1test.CheckRouteState(clients.ServingClient, names.Route, v1test.IsRouteNotReady)
+		t.FatalIfErr(err, "The Route was not desired state", "route", names.Route)
+	})
+
+	t.Run("e2e", func(t *logging.TLogger) {
+		for _, err := range e2e_errors {
+			t.FatalIfErr(err, "E2E Failure")
 		}
-		return false, nil
-	}, "ImagePathInvalid")
-
-	t.FatalIfErr(err, "Failed to validate revision state")
-
-	t.V(2).Log("Checking to ensure Route is in desired state")
-	err = v1test.CheckRouteState(clients.ServingClient, names.Route, v1test.IsRouteNotReady)
-	t.FatalIfErr(err, "the Route was not desired state",
-		"route", names.Route)
+	})
 }
 
 // TestContainerExitingMsg is to validate the error condition defined at
 // https://github.com/knative/serving/blob/master/docs/spec/errors.md
 // for the container crashing scenario.
-func TestContainerExitingMsg(t *testing.T) {
+func TestContainerExitingMsg(legacy *testing.T) {
+	t := logging.NewTLogger(legacy)
+	defer t.CleanUp()
 	t.Parallel()
 	const (
 		// The given image will always exit with an exit code of 5
@@ -154,9 +178,10 @@ func TestContainerExitingMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		tt := tt
-		t.Run(tt.Name, func(t *testing.T) {
+		t.Run(tt.Name, func(t *logging.TLogger) {
 			t.Parallel()
 			clients := test.Setup(t)
+			e2e_errors := make([]error, 0)
 
 			names := test.ResourceNames{
 				Config: test.ObjectNameForTest(t),
@@ -166,54 +191,69 @@ func TestContainerExitingMsg(t *testing.T) {
 			defer test.TearDown(clients, names)
 			test.CleanupOnInterrupt(func() { test.TearDown(clients, names) })
 
-			t.Logf("Creating a new Configuration %s", names.Config)
+			t.Run("API", func(t *logging.TLogger) {
+				t.V(2).Info("Creating a new Configuration", "configuration", names.Config)
 
-			if _, err := v1test.CreateConfiguration(t, clients, names, rtesting.WithConfigReadinessProbe(tt.ReadinessProbe)); err != nil {
-				t.Fatalf("Failed to create configuration %s: %v", names.Config, err)
-			}
+				_, err := v1test.CreateConfiguration(t, clients, names, rtesting.WithConfigReadinessProbe(tt.ReadinessProbe))
+				t.FatalIfErr(err, "Failed to create Configuration", "configuration", names.Config)
 
-			t.Log("When the containers keep crashing, the Configuration should have error status.")
+				t.V(1).Info("When the containers keep crashing, the Configuration should have error status.")
 
-			err := v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
-				cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
-				ValidateCondition(t, cond)
-				if cond != nil && !cond.IsUnknown() {
-					if strings.Contains(cond.Message, errorLog) && cond.IsFalse() {
-						return true, nil
+				err := v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
+					cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
+					errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
+					ValidateCondition(t.WithValues(errCtx...), cond)
+					if cond != nil && !cond.IsUnknown() {
+						if cond.IsFalse() {
+							if !strings.Contains(cond.Message, errorLog) {
+								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'crashing container' scenario",
+									"wantMessage", errorLog, errCtx...)))
+							}
+							if cond.Message != "" { // TODO(coryrc): want this here and others?
+								return true, nil
+							}
+						}
+						// TODO(coryrc): this error message said it wants Reason=containerMissing, but it doesn't check it like it does in all other tests. Either check is needed above or remove it from the "want" list
+						return true, logging.Error("The configuration was not marked with expected error condition.",
+							"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False", errCtx...)
 					}
-					t.Logf("Reason: %s ; Message: %s ; Status: %s", cond.Reason, cond.Message, cond.Status)
-					return true, fmt.Errorf("The configuration %s was not marked with expected error condition (Reason=%q, Message=%q, Status=%q), but with (Reason=%q, Message=%q, Status=%q)",
-						names.Config, containerMissing, errorLog, "False", cond.Reason, cond.Message, cond.Status)
-				}
-				return false, nil
-			}, "ConfigContainersCrashing")
+					return false, nil
+				}, "ConfigContainersCrashing")
 
-			if err != nil {
-				t.Fatalf("Failed to validate configuration state: %s", err)
-			}
+				t.FatalIfErr(err, "Failed to validate configuration state")
 
-			revisionName, err := getRevisionFromConfiguration(clients, names.Config)
-			if err != nil {
-				t.Fatalf("Failed to get revision from configuration %s: %v", names.Config, err)
-			}
+				revisionName, err := getRevisionFromConfiguration(clients, names.Config)
+				t.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
 
-			t.Log("When the containers keep crashing, the revision should have error status.")
-			err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
-				cond := r.Status.GetCondition(v1.RevisionConditionReady)
-				ValidateCondition(t, cond)
-				if cond != nil {
-					if cond.Reason == exitCodeReason && strings.Contains(cond.Message, errorLog) {
-						return true, nil
+				t.V(1).Info("When the containers keep crashing, the revision should have error status.")
+				err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
+					cond := r.Status.GetCondition(v1.RevisionConditionReady)
+					errCtx := [4]interface{}{"revision", revisionName, "condition", cond}
+					ValidateCondition(t.WithValues(errCtx...), cond)
+					if cond != nil {
+						if cond.Reason == exitCodeReason {
+							if !strings.Contains(cond.Message, errorLog) {
+								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with crashing container",
+									"wantMessage", errorLog, errCtx...)))
+							}
+							if cond.Message != "" {
+								return true, nil
+							}
+						}
+						return true, logging.Error("The revision was not marked with expected error condition.",
+							"wantReason", exitCodeReason, "wantMessage", "!\"\"", errCtx...)
 					}
-					return true, fmt.Errorf("The revision %s was not marked with expected error condition (Reason=%q, Message=%q), but with (Reason=%q, Message=%q)",
-						revisionName, exitCodeReason, errorLog, cond.Reason, cond.Message)
-				}
-				return false, nil
-			}, "RevisionContainersCrashing")
+					return false, nil
+				}, "RevisionContainersCrashing")
 
-			if err != nil {
-				t.Fatalf("Failed to validate revision state: %s", err)
-			}
+				t.FatalIfErr(err, "Failed to validate revision state")
+			})
+
+			t.Run("e2e", func(t *logging.TLogger) {
+				for _, err := range e2e_errors {
+					t.FatalIfErr(err, "E2E Failure")
+				}
+			})
 		})
 	}
 }
@@ -227,7 +267,7 @@ func getRevisionFromConfiguration(clients *test.Clients, configName string) (str
 	if config.Status.LatestCreatedRevisionName != "" {
 		return config.Status.LatestCreatedRevisionName, nil
 	}
-	return "", fmt.Errorf("No valid revision name found in configuration %s", configName)
+	return "", logging.Error("No valid revision name found", "configuration", configName)
 }
 
 var camelCaseRegex = regexp.MustCompile(`^[[:upper:]].*`)
@@ -237,7 +277,6 @@ func ValidateCondition(t *TLogger, c *apis.Condition) {
 	if c == nil {
 		return
 	}
-	t = t.WithValues("condition", c)
 	if c.Type == "" {
 		t.Error("A Condition.Type must not be an empty string")
 	} else if !camelCaseRegex.MatchString(c.Type) {
