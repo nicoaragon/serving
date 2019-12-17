@@ -88,7 +88,8 @@ func TestContainerErrorMsg(legacy *testing.T) {
 			errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
 			ValidateCondition(t.WithValues(errCtx...), cond)
 			if cond != nil && !cond.IsUnknown() {
-				if cond.IsFalse() {
+				if cond.IsFalse() && cond.Reason == containerMissing {
+					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
 						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
 							"wantMessage", manifestUnknown, errCtx...)))
@@ -115,6 +116,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 			ValidateCondition(t.WithValues(errCtx...), cond)
 			if cond != nil {
 				if cond.Reason == containerMissing {
+					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
 						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with invalid imagepath",
 							"wantMessage", manifestUnknown, errCtx...)))
@@ -204,16 +206,16 @@ func TestContainerExitingMsg(legacy *testing.T) {
 					errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
 					ValidateCondition(t.WithValues(errCtx...), cond)
 					if cond != nil && !cond.IsUnknown() {
-						if cond.IsFalse() {
+						if cond.IsFalse() && cond.Reason == containerMissing {
+							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
 								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'crashing container' scenario",
 									"wantMessage", errorLog, errCtx...)))
 							}
-							if cond.Message != "" { // TODO(coryrc): want this here and others?
+							if cond.Message != "" {
 								return true, nil
 							}
 						}
-						// TODO(coryrc): this error message said it wants Reason=containerMissing, but it doesn't check it like it does in all other tests. Either check is needed above or remove it from the "want" list
 						return true, logging.Error("The configuration was not marked with expected error condition.",
 							"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False", errCtx...)
 					}
@@ -232,6 +234,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 					ValidateCondition(t.WithValues(errCtx...), cond)
 					if cond != nil {
 						if cond.Reason == exitCodeReason {
+							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
 								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with crashing container",
 									"wantMessage", errorLog, errCtx...)))
