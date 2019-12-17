@@ -28,7 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
-	ptest "knative.dev/pkg/test"
+	pkgTest "knative.dev/pkg/test"
 	"knative.dev/pkg/test/logging"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	serviceresourcenames "knative.dev/serving/pkg/reconciler/service/resources/names"
@@ -48,7 +48,7 @@ const (
 func TestContainerErrorMsg(legacy *testing.T) {
 	t := logging.NewTLogger(legacy)
 	defer t.CleanUp()
-	if strings.HasSuffix(strings.Split(ptest.Flags.DockerRepo, "/")[0], ".local") {
+	if strings.HasSuffix(strings.Split(pkgTest.Flags.DockerRepo, "/")[0], ".local") {
 		t.V(0).Info("Skipping for local docker repo")
 		t.SkipNow()
 	}
