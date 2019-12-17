@@ -54,7 +54,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 	}
 	t.Parallel()
 	clients := test.Setup(t)
-	e2e_errors := make([]error, 0)
+	e2eErrors := make([]error, 0)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
@@ -91,7 +91,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 				if cond.IsFalse() && cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
+						e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
 							"wantMessage", manifestUnknown, errCtx...)))
 					}
 					if cond.Message != "" {
@@ -118,7 +118,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 				if cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with invalid imagepath",
+						e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with invalid imagepath",
 							"wantMessage", manifestUnknown, errCtx...)))
 					}
 					if cond.Message != "" {
@@ -139,7 +139,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 	})
 
 	t.Run("e2e", func(t *logging.TLogger) {
-		for _, err := range e2e_errors {
+		for _, err := range e2eErrors {
 			t.FatalIfErr(err, "E2E Failure")
 		}
 	})
@@ -183,7 +183,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 		t.Run(tt.Name, func(t *logging.TLogger) {
 			t.Parallel()
 			clients := test.Setup(t)
-			e2e_errors := make([]error, 0)
+			e2eErrors := make([]error, 0)
 
 			names := test.ResourceNames{
 				Config: test.ObjectNameForTest(t),
@@ -209,7 +209,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 						if cond.IsFalse() && cond.Reason == containerMissing {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
-								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing 'crashing container' scenario",
+								e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing 'crashing container' scenario",
 									"wantMessage", errorLog, errCtx...)))
 							}
 							if cond.Message != "" {
@@ -236,7 +236,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 						if cond.Reason == exitCodeReason {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
-								e2e_errors = append(e2e_errors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with crashing container",
+								e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with crashing container",
 									"wantMessage", errorLog, errCtx...)))
 							}
 							if cond.Message != "" {
@@ -253,7 +253,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 			})
 
 			t.Run("e2e", func(t *logging.TLogger) {
-				for _, err := range e2e_errors {
+				for _, err := range e2eErrors {
 					t.FatalIfErr(err, "E2E Failure")
 				}
 			})
