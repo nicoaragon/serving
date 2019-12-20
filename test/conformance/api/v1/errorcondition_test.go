@@ -84,21 +84,21 @@ func TestContainerErrorMsg(legacy *testing.T) {
 		t.V(8).Info("Checking for 'Container image not present in repository' scenario defined in error condition spec.")
 		err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 			cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
-			errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
+			errCtx := []interface{}{"configuration", names.Config, "condition", cond}
 			ValidateCondition(t.WithValues(errCtx...), cond)
 			if cond != nil && !cond.IsUnknown() {
 				if cond.IsFalse() && cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
 						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
-							"wantMessage", manifestUnknown, errCtx...))
+							"wantMessage", manifestUnknown).WithValues(errCtx...))
 					}
 					if cond.Message != "" {
 						return true, nil
 					}
 				}
 				return true, logging.Error("The configuration was not marked with expected error condition",
-					"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False", errCtx...)
+					"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
 			}
 			return false, nil
 		}, "ContainerImageNotPresent")
@@ -111,21 +111,21 @@ func TestContainerErrorMsg(legacy *testing.T) {
 		t.V(1).Info("When the imagepath is invalid, the revision should have error status.")
 		err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 			cond := r.Status.GetCondition(v1.RevisionConditionReady)
-			errCtx := [4]interface{}{"revision", revisionName, "condition", cond}
+			errCtx := []interface{}{"revision", revisionName, "condition", cond}
 			ValidateCondition(t.WithValues(errCtx...), cond)
 			if cond != nil {
 				if cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
 						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with invalid imagepath",
-							"wantMessage", manifestUnknown, errCtx...))
+							"wantMessage", manifestUnknown).WithValues(errCtx...))
 					}
 					if cond.Message != "" {
 						return true, nil
 					}
 				}
 				return true, logging.Error("The revision was not marked with expected error condition",
-					"wantReason", containerMissing, "wantMessage", "!\"\"", errCtx...)
+					"wantReason", containerMissing, "wantMessage", "!\"\"").WithValues(errCtx...)
 			}
 			return false, nil
 		}, "ImagePathInvalid")
@@ -200,23 +200,23 @@ func TestContainerExitingMsg(legacy *testing.T) {
 
 				t.V(1).Info("When the containers keep crashing, the Configuration should have error status.")
 
-				err := v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
+				err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 					cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
-					errCtx := [4]interface{}{"configuration", names.Config, "condition", cond}
+					errCtx := []interface{}{"configuration", names.Config, "condition", cond}
 					ValidateCondition(t.WithValues(errCtx...), cond)
 					if cond != nil && !cond.IsUnknown() {
 						if cond.IsFalse() && cond.Reason == containerMissing {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
 								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'crashing container' scenario",
-									"wantMessage", errorLog, errCtx...))
+									"wantMessage", errorLog).WithValues(errCtx...))
 							}
 							if cond.Message != "" {
 								return true, nil
 							}
 						}
 						return true, logging.Error("The configuration was not marked with expected error condition.",
-							"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False", errCtx...)
+							"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
 					}
 					return false, nil
 				}, "ConfigContainersCrashing")
@@ -229,21 +229,21 @@ func TestContainerExitingMsg(legacy *testing.T) {
 				t.V(1).Info("When the containers keep crashing, the revision should have error status.")
 				err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 					cond := r.Status.GetCondition(v1.RevisionConditionReady)
-					errCtx := [4]interface{}{"revision", revisionName, "condition", cond}
+					errCtx := []interface{}{"revision", revisionName, "condition", cond}
 					ValidateCondition(t.WithValues(errCtx...), cond)
 					if cond != nil {
 						if cond.Reason == exitCodeReason {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
 								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with crashing container",
-									"wantMessage", errorLog, errCtx...))
+									"wantMessage", errorLog).WithValues(errCtx...))
 							}
 							if cond.Message != "" {
 								return true, nil
 							}
 						}
 						return true, logging.Error("The revision was not marked with expected error condition.",
-							"wantReason", exitCodeReason, "wantMessage", "!\"\"", errCtx...)
+							"wantReason", exitCodeReason, "wantMessage", "!\"\"").WithValues(errCtx...)
 					}
 					return false, nil
 				}, "RevisionContainersCrashing")
@@ -273,18 +273,18 @@ func getRevisionFromConfiguration(clients *test.Clients, configName string) (str
 }
 
 var camelCaseRegex = regexp.MustCompile(`^[[:upper:]].*`)
-var camelCaseSingleWordRegex = regexp.MustCompile(`^[[:upper:]][^[:whitespace:]]+$`)
+var camelCaseSingleWordRegex = regexp.MustCompile(`^[[:upper:]][^[\s]]+$`)
 
-func ValidateCondition(t *TLogger, c *apis.Condition) {
+func ValidateCondition(t *logging.TLogger, c *apis.Condition) {
 	if c == nil {
 		return
 	}
 	if c.Type == "" {
 		t.Error("A Condition.Type must not be an empty string")
-	} else if !camelCaseRegex.MatchString(c.Type) {
+	} else if !camelCaseRegex.MatchString(string(c.Type)) {
 		t.Error("A Condition.Type must be CamelCase, so must start with an upper-case letter")
 	}
-	if c.Status != apis.ConditionTrue && c.Status != apis.ConditionFalse && c.Status != apis.ConditionUnknown {
+	if c.Status != corev1.ConditionTrue && c.Status != corev1.ConditionFalse && c.Status != corev1.ConditionUnknown {
 		t.Error("A Condition.Status must be True, False, or Unknown")
 	}
 	if c.Reason != "" && !camelCaseRegex.MatchString(c.Reason) {
