@@ -13,6 +13,8 @@ required = [
   "knative.dev/test-infra/scripts",
   "knative.dev/test-infra/tools/dep-collector",
   "github.com/gogo/protobuf/proto",
+  "github.com/go-logr/logr",
+  "github.com/go-logr/zapr",
 ]
 
 [[constraint]]
@@ -88,3 +90,18 @@ required = [
 [[prune.project]]
   name = "knative.dev/test-infra"
   non-go = false
+
+[[override]]
+  name = "github.com/golang/glog"
+  # Redirect glog calls -> zap if dependencies end up using it
+  # source = "https://github.com/istio/glog.git"
+  branch = "enable-levels"
+  source = "https://github.com/coryrc/glog.git"
+
+[[override]]
+  name = "k8s.io/klog"
+  # Redirect klog calls -> zap
+  # source = "https://github.com/istio/klog.git"
+  branch = "enable-levels"
+  source = "https://github.com/coryrc/klog.git"
+

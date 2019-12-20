@@ -294,6 +294,14 @@
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:53becd66889185091b58ea3fc49294996f2179fb05a89702f4de7d15e581b509"
+  name = "github.com/go-logr/logr"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "9fb12b3b21c5415d16ac18dc5cd42c1cfdd40c4e"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:260f7ebefc63024c8dfe2c9f1a2935a89fa4213637a1f522f592f80c001cc441"
   name = "github.com/go-openapi/jsonpointer"
   packages = ["."]
@@ -349,12 +357,13 @@
   version = "v1.3.1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:e2b86e41f3d669fc36b50d31d32d22c8ac656c75aa5ea89717ce7177e134ff2a"
+  branch = "enable-levels"
+  digest = "1:2bdeba3f7313ad2e5976a4c888d063261f73f80301d48549574520f90b6b4cfe"
   name = "github.com/golang/glog"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+  revision = "c97f5357467663b6ad6a4358a1c5218832172387"
+  source = "https://github.com/coryrc/glog.git"
 
 [[projects]]
   branch = "master"
@@ -1681,12 +1690,13 @@
   revision = "e17681d19d3ac4837a019ece36c2a0ec31ffe985"
 
 [[projects]]
-  digest = "1:c263611800c3a97991dbcf9d3bc4de390f6224aaa8ca0a7226a9d734f65a416a"
+  branch = "enable-levels"
+  digest = "1:038f1104f2fa82ec339ca09b8d812aab2e97b7ad1ed028c304e0da45bb4421ad"
   name = "k8s.io/klog"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "71442cd4037d612096940ceb0f3fec3f7fff66e0"
-  version = "v0.2.0"
+  revision = "463a6222b744c685ec3e6b7a6253775b29044980"
+  source = "https://github.com/coryrc/klog.git"
 
 [[projects]]
   digest = "1:6267b439cfa16676669e82402d6d7bf209f2c55a198206ef28eee97e0ccda60c"
@@ -1776,8 +1786,8 @@
   revision = "1a95d9fc04df063811cca86a836629a0141539b0"
 
 [[projects]]
-  branch = "release-0.12"
-  digest = "1:048b68ed41f274d9f9c663076f987bb4be938273ba13bc68088910ad634a354b"
+  branch = "issue907"
+  digest = "1:2c108fb97556e7b9588407ccc454de6dd0405a357a8fcc652b5e85be468bf9e3"
   name = "knative.dev/pkg"
   packages = [
     "apis",
@@ -1876,7 +1886,8 @@
     "websocket",
   ]
   pruneopts = "T"
-  revision = "b8dc5fbc6d2f4717a69d15382921a51f93ab4cbb"
+  revision = "e8324da00eeae16cae75be14fde46677ad23d5a3"
+  source = "https://github.com/coryrc/pkg.git"
 
 [[projects]]
   branch = "master"
@@ -2022,6 +2033,7 @@
     "k8s.io/code-generator/cmd/defaulter-gen",
     "k8s.io/code-generator/cmd/informer-gen",
     "k8s.io/code-generator/cmd/lister-gen",
+    "k8s.io/klog",
     "k8s.io/kubernetes/pkg/version",
     "k8s.io/metrics/pkg/apis/custom_metrics",
     "knative.dev/caching/pkg/apis/caching",

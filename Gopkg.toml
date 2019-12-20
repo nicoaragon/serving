@@ -30,7 +30,8 @@ required = [
 
 [[override]]
   name = "knative.dev/pkg"
-  branch = "release-0.12"
+  branch = "issue907"
+  source = "https://github.com/coryrc/pkg.git"
 
 [[constraint]]
   name = "knative.dev/caching"
@@ -169,3 +170,17 @@ required = [
 [[override]]
   name="github.com/golang/protobuf"
   version = "1.3.2"
+
+[[override]]
+  name = "github.com/golang/glog"
+  # Redirect glog calls -> zap if dependencies end up using it
+  # source = "https://github.com/istio/glog.git"
+  branch = "enable-levels"
+  source = "https://github.com/coryrc/glog.git"
+
+[[override]]
+  name = "k8s.io/klog"
+  # Redirect klog calls -> zap
+  # source = "https://github.com/istio/klog.git"
+  branch = "enable-levels"
+  source = "https://github.com/coryrc/klog.git"
