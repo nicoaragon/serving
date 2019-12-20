@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
@@ -91,8 +90,8 @@ func TestContainerErrorMsg(legacy *testing.T) {
 				if cond.IsFalse() && cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
-							"wantMessage", manifestUnknown, errCtx...)))
+						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
+							"wantMessage", manifestUnknown, errCtx...))
 					}
 					if cond.Message != "" {
 						return true, nil
@@ -118,8 +117,8 @@ func TestContainerErrorMsg(legacy *testing.T) {
 				if cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with invalid imagepath",
-							"wantMessage", manifestUnknown, errCtx...)))
+						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with invalid imagepath",
+							"wantMessage", manifestUnknown, errCtx...))
 					}
 					if cond.Message != "" {
 						return true, nil
@@ -209,8 +208,8 @@ func TestContainerExitingMsg(legacy *testing.T) {
 						if cond.IsFalse() && cond.Reason == containerMissing {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
-								e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing 'crashing container' scenario",
-									"wantMessage", errorLog, errCtx...)))
+								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'crashing container' scenario",
+									"wantMessage", errorLog, errCtx...))
 							}
 							if cond.Message != "" {
 								return true, nil
@@ -236,8 +235,8 @@ func TestContainerExitingMsg(legacy *testing.T) {
 						if cond.Reason == exitCodeReason {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
-								e2eErrors = append(e2eErrors, errors.WithStack(logging.Error("Bad Condition.Message testing revision with crashing container",
-									"wantMessage", errorLog, errCtx...)))
+								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with crashing container",
+									"wantMessage", errorLog, errCtx...))
 							}
 							if cond.Message != "" {
 								return true, nil
