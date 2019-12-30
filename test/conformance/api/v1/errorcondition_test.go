@@ -87,7 +87,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 			errCtx := []interface{}{"configuration", names.Config, "condition", cond}
 			ValidateCondition(t.WithValues(errCtx...), cond)
 			if cond != nil && !cond.IsUnknown() {
-				if cond.IsFalse() && cond.Reason == containerMissing {
+				if cond.IsFalse() {
 					// Spec does not have constraints on the Message
 					if !strings.Contains(cond.Message, manifestUnknown) {
 						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
@@ -97,6 +97,8 @@ func TestContainerErrorMsg(legacy *testing.T) {
 						return true, nil
 					}
 				}
+				t.WithValues(errCtx...).Fatal("The configuration was not marked with expected error condition",
+					"wantMessage", "!\"\"", "wantStatus", "False")
 				return true, logging.Error("The configuration was not marked with expected error condition",
 					"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
 			}
@@ -205,7 +207,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 					errCtx := []interface{}{"configuration", names.Config, "condition", cond}
 					ValidateCondition(t.WithValues(errCtx...), cond)
 					if cond != nil && !cond.IsUnknown() {
-						if cond.IsFalse() && cond.Reason == containerMissing {
+						if cond.IsFalse() {
 							// Spec does not have constraints on the Message
 							if !strings.Contains(cond.Message, errorLog) {
 								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'crashing container' scenario",
@@ -216,7 +218,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 							}
 						}
 						return true, logging.Error("The configuration was not marked with expected error condition.",
-							"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
+							"wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
 					}
 					return false, nil
 				}, "ConfigContainersCrashing")
