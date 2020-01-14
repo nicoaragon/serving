@@ -53,7 +53,6 @@ func TestContainerErrorMsg(legacy *testing.T) {
 	}
 	t.Parallel()
 	clients := test.Setup(t)
-	e2eErrors := make([]error, 0)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
@@ -66,7 +65,7 @@ func TestContainerErrorMsg(legacy *testing.T) {
 	// Specify an invalid image path
 	// A valid DockerRepo is still needed, otherwise will get UNAUTHORIZED instead of container missing error
 	t.V(2).Info("Creating a new Service", "service", names.Service)
-	svc, err := createService(legacy, clients, names, 2)
+	svc, err := createService(t, clients, names, 2)
 	t.FatalIfErr(err, "Failed to create Service")
 
 	names.Config = serviceresourcenames.Configuration(svc)
@@ -74,30 +73,32 @@ func TestContainerErrorMsg(legacy *testing.T) {
 
 	manifestUnknown := string(transport.ManifestUnknownErrorCode)
 
-	t.Run("API", func(t *logging.TLogger) {
-		t.V(1).Info("When the imagepath is invalid, the Configuration should have error status.")
-		t.V(8).Info("Wait for ServiceState becomes NotReady. It also waits for the creation of Configuration.")
+	t.Run("API", func(ts *logging.TLogger) {
+		ts.V(1).Info("When the imagepath is invalid, the Configuration should have error status.")
+		ts.V(8).Info("Wait for ServiceState becomes NotReady. It also waits for the creation of Configuration.")
 		err = v1test.WaitForServiceState(clients.ServingClient, names.Service, v1test.IsServiceNotReady, "ServiceIsNotReady")
-		t.FatalIfErr(err, "The Service was unexpected state",
+		ts.FatalIfErr(err, "The Service was unexpected state",
 			"service", names.Service)
 
-		t.V(8).Info("Checking for 'Container image not present in repository' scenario defined in error condition spec.")
+		ts.V(8).Info("Checking for 'Container image not present in repository' scenario defined in error condition spec.")
 		err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 			cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
 			errCtx := []interface{}{"configuration", names.Config, "condition", cond}
-			ValidateCondition(t.WithValues(errCtx...), cond)
+			ValidateCondition(ts.WithValues(errCtx...), cond)
 			if cond != nil && !cond.IsUnknown() {
 				if cond.IsFalse() {
 					// Spec does not have constraints on the Message
-					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
+					if strings.Contains(cond.Message, manifestUnknown) {
+						t.Collect("e2e", "Received manifestUnknown Message")
+					} else {
+						t.Collect("e2e", logging.Error("Bad Condition.Message testing 'Container image not present' scenario",
 							"wantMessage", manifestUnknown).WithValues(errCtx...))
 					}
 					if cond.Message != "" {
 						return true, nil
 					}
 				}
-				t.WithValues(errCtx...).Fatal("The configuration was not marked with expected error condition",
+				ts.WithValues(errCtx...).Fatal("The configuration was not marked with expected error condition",
 					"wantMessage", "!\"\"", "wantStatus", "False")
 				return true, logging.Error("The configuration was not marked with expected error condition",
 					"wantReason", containerMissing, "wantMessage", "!\"\"", "wantStatus", "False").WithValues(errCtx...)
@@ -105,21 +106,23 @@ func TestContainerErrorMsg(legacy *testing.T) {
 			return false, nil
 		}, "ContainerImageNotPresent")
 
-		t.FatalIfErr(err, "Failed to validate configuration state")
+		ts.FatalIfErr(err, "Failed to validate configuration state")
 
 		revisionName, err := getRevisionFromConfiguration(clients, names.Config)
-		t.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
+		ts.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
 
-		t.V(1).Info("When the imagepath is invalid, the revision should have error status.")
+		ts.V(1).Info("When the imagepath is invalid, the revision should have error status.")
 		err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 			cond := r.Status.GetCondition(v1.RevisionConditionReady)
 			errCtx := []interface{}{"revision", revisionName, "condition", cond}
-			ValidateCondition(t.WithValues(errCtx...), cond)
+			ValidateCondition(ts.WithValues(errCtx...), cond)
 			if cond != nil {
 				if cond.Reason == containerMissing {
 					// Spec does not have constraints on the Message
-					if !strings.Contains(cond.Message, manifestUnknown) {
-						e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with invalid imagepath",
+					if strings.Contains(cond.Message, manifestUnknown) {
+						t.Collect("e2e", "Received manifestUnknown Message")
+					} else {
+						t.Collect("e2e", logging.Error("Bad Condition.Message testing revision with invalid imagepath",
 							"wantMessage", manifestUnknown).WithValues(errCtx...))
 					}
 					if cond.Message != "" {
@@ -132,17 +135,11 @@ func TestContainerErrorMsg(legacy *testing.T) {
 			return false, nil
 		}, "ImagePathInvalid")
 
-		t.FatalIfErr(err, "Failed to validate revision state")
+		ts.FatalIfErr(err, "Failed to validate revision state")
 
-		t.V(1).Info("Checking to ensure Route is in desired state")
+		ts.V(1).Info("Checking to ensure Route is in desired state")
 		err = v1test.CheckRouteState(clients.ServingClient, names.Route, v1test.IsRouteNotReady)
-		t.FatalIfErr(err, "The Route was not desired state", "route", names.Route)
-	})
-
-	t.Run("e2e", func(t *logging.TLogger) {
-		for _, err := range e2eErrors {
-			t.FatalIfErr(err, "E2E Failure")
-		}
+		ts.FatalIfErr(err, "The Route was not desired state", "route", names.Route)
 	})
 }
 
@@ -184,7 +181,6 @@ func TestContainerExitingMsg(legacy *testing.T) {
 		t.Run(tt.Name, func(t *logging.TLogger) {
 			t.Parallel()
 			clients := test.Setup(t)
-			e2eErrors := make([]error, 0)
 
 			names := test.ResourceNames{
 				Config: test.ObjectNameForTest(t),
@@ -194,23 +190,25 @@ func TestContainerExitingMsg(legacy *testing.T) {
 			defer test.TearDown(clients, names)
 			test.CleanupOnInterrupt(func() { test.TearDown(clients, names) })
 
-			t.Run("API", func(t *logging.TLogger) {
-				t.V(2).Info("Creating a new Configuration", "configuration", names.Config)
+			t.Run("API", func(ts *logging.TLogger) {
+				ts.V(2).Info("Creating a new Configuration", "configuration", names.Config)
 
 				_, err := v1test.CreateConfiguration(t, clients, names, rtesting.WithConfigReadinessProbe(tt.ReadinessProbe))
-				t.FatalIfErr(err, "Failed to create Configuration", "configuration", names.Config)
+				ts.FatalIfErr(err, "Failed to create Configuration", "configuration", names.Config)
 
-				t.V(1).Info("When the containers keep crashing, the Configuration should have error status.")
+				ts.V(1).Info("When the containers keep crashing, the Configuration should have error status.")
 
 				err = v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(r *v1.Configuration) (bool, error) {
 					cond := r.Status.GetCondition(v1.ConfigurationConditionReady)
 					errCtx := []interface{}{"configuration", names.Config, "condition", cond}
-					ValidateCondition(t.WithValues(errCtx...), cond)
+					ValidateCondition(ts.WithValues(errCtx...), cond)
 					if cond != nil && !cond.IsUnknown() {
 						if cond.IsFalse() {
 							// Spec does not have constraints on the Message
-							if !strings.Contains(cond.Message, errorLog) {
-								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing 'crashing container' scenario",
+							if strings.Contains(cond.Message, errorLog) {
+								t.Collect("e2e", "Received errorLog in message")
+							} else {
+								t.Collect("e2e", logging.Error("Bad Condition.Message testing 'crashing container' scenario",
 									"wantMessage", errorLog).WithValues(errCtx...))
 							}
 							if cond.Message != "" {
@@ -223,21 +221,23 @@ func TestContainerExitingMsg(legacy *testing.T) {
 					return false, nil
 				}, "ConfigContainersCrashing")
 
-				t.FatalIfErr(err, "Failed to validate configuration state")
+				ts.FatalIfErr(err, "Failed to validate configuration state")
 
 				revisionName, err := getRevisionFromConfiguration(clients, names.Config)
-				t.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
+				ts.FatalIfErr(err, "Failed to get revision from configuration", "configuration", names.Config)
 
-				t.V(1).Info("When the containers keep crashing, the revision should have error status.")
+				ts.V(1).Info("When the containers keep crashing, the revision should have error status.")
 				err = v1test.WaitForRevisionState(clients.ServingClient, revisionName, func(r *v1.Revision) (bool, error) {
 					cond := r.Status.GetCondition(v1.RevisionConditionReady)
 					errCtx := []interface{}{"revision", revisionName, "condition", cond}
-					ValidateCondition(t.WithValues(errCtx...), cond)
+					ValidateCondition(ts.WithValues(errCtx...), cond)
 					if cond != nil {
 						if cond.Reason == exitCodeReason {
 							// Spec does not have constraints on the Message
-							if !strings.Contains(cond.Message, errorLog) {
-								e2eErrors = append(e2eErrors, logging.Error("Bad Condition.Message testing revision with crashing container",
+							if strings.Contains(cond.Message, errorLog) {
+								t.Collect("e2e", "Received errorLog in message")
+							} else {
+								t.Collect("e2e", logging.Error("Bad Condition.Message testing revision with crashing container",
 									"wantMessage", errorLog).WithValues(errCtx...))
 							}
 							if cond.Message != "" {
@@ -250,13 +250,7 @@ func TestContainerExitingMsg(legacy *testing.T) {
 					return false, nil
 				}, "RevisionContainersCrashing")
 
-				t.FatalIfErr(err, "Failed to validate revision state")
-			})
-
-			t.Run("e2e", func(t *logging.TLogger) {
-				for _, err := range e2eErrors {
-					t.FatalIfErr(err, "E2E Failure")
-				}
+				ts.FatalIfErr(err, "Failed to validate revision state")
 			})
 		})
 	}
