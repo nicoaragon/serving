@@ -123,7 +123,7 @@ func CreateServiceReady(t pkgTest.T, clients *test.Clients, names *test.Resource
 	t.Log("Getting latest objects Created by Service")
 	resources, err := GetResourceObjects(clients, *names)
 	if err == nil {
-		t.Log("Successfully created Service", names.Service)
+		t.Log("Successfully created Service", "name", names.Service)
 	}
 	return resources, err
 }
